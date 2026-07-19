@@ -1,6 +1,5 @@
 import os
-import uuid
-from fastapi import FastAPI, HTTPException, Header
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from google import genai
@@ -11,66 +10,50 @@ app = FastAPI()
 # Enable CORS so your GitHub Pages website can securely talk to your Render server
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Allows requests from your GitHub Pages URL
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# In-memory session database to track usage limits per user
-SESSION_USAGE = {}
-MAX_FREE_MESSAGES_PER_SESSION = 30
+# Custom system prompt to give your AI a premium, high-tier personality
+SPECIALIZED_SYSTEM_PROMPT = "You are a premium, high-tier intelligence engine. Provide incredibly insightful, professional answers."
 
-# Change this text to whatever you want your specialized AI's personality to be!
-SPECIALIZED_SYSTEM_PROMPT = "You are a specialized AI assistant. Keep responses brief, helpful, and strictly accurate."
-
-class ChatRequest(BaseModel):
+class PremiumChatRequest(BaseModel):
     prompt: str
     model_choice: str
-
-@app.get("/get-session")
-async def get_session():
-    """Generates an anonymous session ID when the user loads the webpage"""
-    session_id = str(uuid.uuid4())
-    SESSION_USAGE[session_id] = 0
-    return {"session_id": session_id}
+    user_gemini_key: str = None
+    user_groq_key: str = None
 
 @app.post("/chat")
-async def chat_endpoint(request: ChatRequest, x_session_id: str = Header(None)):
-    """Handles routing the prompt to Groq or Gemini based on user selection"""
-    if not x_session_id:
-        raise HTTPException(status_code=401, detail="Missing session token. Please reload the page.")
-    
-    if x_session_id not in SESSION_USAGE:
-        SESSION_USAGE[x_session_id] = 0
-
-    # Guardrail to protect your budget/rate limits
-    if SESSION_USAGE[x_session_id] >= MAX_FREE_MESSAGES_PER_SESSION:
-        raise HTTPException(status_code=429, detail="Free message limit reached for this session.")
-
+async def chat_endpoint(request: PremiumChatRequest):
     user_input = request.prompt
     provider = request.model_choice.lower()
 
-    # Increment usage counter
-    SESSION_USAGE[x_session_id] += 1
-    remaining_messages = MAX_FREE_MESSAGES_PER_SESSION - SESSION_USAGE[x_session_id]
-
-    # --- GOOGLE GEMINI LAYER ---
+    # --- GEMINI SYSTEM ROUTING ---
     if provider == "gemini":
+        # Check if the user passed a key from the frontend; if not, check Render's environment
+        api_key = request.user_gemini_key or os.getenv("GEMINI_API_KEY")
+        if not api_key:
+            raise HTTPException(status_code=400, detail="No Gemini API Key supplied by interface context.")
         try:
-            client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
+            client = genai.Client(api_key=api_key)
             response = client.models.generate_content(
                 model='gemini-2.5-flash',
                 contents=f"{SPECIALIZED_SYSTEM_PROMPT}\n\nUser Question: {user_input}"
             )
-            return {"answer": response.text, "remaining": remaining_messages}
+            return {"answer": response.text}
         except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Gemini error: {str(e)}")
+            raise HTTPException(status_code=500, detail=str(e))
 
-    # --- GROQ LAYER ---
+    # --- GROQ SYSTEM ROUTING ---
     elif provider == "groq":
+        # Check if the user passed a key from the frontend; if not, check Render's environment
+        api_key = request.user_groq_key or os.getenv("GROQ_API_KEY")
+        if not api_key:
+            raise HTTPException(status_code=400, detail="No Groq API Key supplied by interface context.")
         try:
-            client = Groq(api_key=os.getenv("GROQ_API_KEY"))
+            client = Groq(api_key=api_key)
             completion = client.chat.completions.create(
                 model="llama-3.3-70b-versatile",
                 messages=[
@@ -78,9 +61,9 @@ async def chat_endpoint(request: ChatRequest, x_session_id: str = Header(None)):
                     {"role": "user", "content": user_input}
                 ]
             )
-            return {"answer": completion.choices[0].message.content, "remaining": remaining_messages}
+            return {"answer": completion.choices[0].message.content}
         except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Groq error: {str(e)}")
+            raise HTTPException(status_code=500, detail=str(e))
             
     else:
-        raise HTTPException(status_code=400, detail="Invalid engine choice.")
+        raise HTTPException(status_code=400, detail="Unknown runtime machine layer targeted.")
