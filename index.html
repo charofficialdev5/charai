@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CharAI Website</title>
+    <style>
+        body { font-family: sans-serif; max-width: 600px; margin: 40px auto; padding: 20px; line-height: 1.6; }
+        textarea { width: 100%; padding: 10px; margin-top: 5px; box-sizing: border-box; }
+        select, button { padding: 10px; margin-top: 10px; font-size: 16px; cursor: pointer; }
+        #aiOutput { white-space: pre-wrap; font-weight: bold; background: #f4f4f4; padding: 15px; border-left: 5px solid #007bff; margin-top: 15px; }
+        #usageCounter { color: gray; font-size: 13px; margin-top: 5px; }
+    </style>
+</head>
+<body>
+
+    <h2>CharAI</h2>
+    <p>Select a chat model and start chatting.</p>
+    
+    <!-- Model Switcher Dropdown -->
+    <label for="modelSelect">Choose AI Engine:</label>
+    <select id="modelSelect">
+        <option value="gemini">Google Gemini API</option>
+        <option value="groq">Groq API</option>
+    </select>
+    <br><br>
+
+    <!-- Prompt Input Box -->
+    <label for="userInput">Enter your question:</label>
+    <textarea id="userInput" placeholder="Type your message here..." rows="5"></textarea>
+    
+    <button onclick="sendToAI()">Send Prompt</button>
+
+    <h3>Answer:</h3>
+    <div id="aiOutput">The AI response will appear here...</div>
+    <div id="usageCounter"></div>
+
+    <script>
+        // STEP 1: Change this placeholder to your actual live Render Web Service URL once deployed!
+        const BACKEND_URL = 'https://your-app-name.onrender.com'; 
+        let userSessionId = "";
+
+        // Instantly generate a temporary session token when they open the website
+        window.onload = async function() {
+            try {
+                const response = await fetch(`${BACKEND_URL}/get-session`);
+                const data = await response.json();
+                userSessionId = data.session_id;
+            } catch (err) {
+                console.error("Failed to connect to backend server. Make sure your Render URL is correct and active.", err);
+                document.getElementById('aiOutput').innerText = "Status: Server sleeping or disconnected. Waiting for spin-up...";
+            }
+        };
+
+        async function sendToAI() {
+            const prompt = document.getElementById('userInput').value;
+            const modelChoice = document.getElementById('modelSelect').value;
+            const outputElement = document.getElementById('aiOutput');
+            const counterElement = document.getElementById('usageCounter');
+            
+            if (!prompt.trim()) {
+                alert("Please type a question first!");
+                return;
+            }
+
+            outputElement.innerText = "Processing request on Render backend...";
+
+            try {
+                const response = await fetch(`${BACKEND_URL}/chat`, {
+                    method: 'POST',
+                    headers: { 
+                        'Content-Type': 'application/json',
+                        'X-Session-Id': userSessionId
+                    },
+                    body: JSON.stringify({ prompt: prompt, model_choice: modelChoice })
+                });
+
+                const data = await response.json();
+                
+                if (response.ok) {
+                    outputElement.innerText = data.answer;
+                    counterElement.innerText = `Messages left in this session: ${data.remaining}`;
+                } else {
+                    outputElement.innerText = "Notice: " + data.detail;
+                }
+            } catch (error) {
+                outputElement.innerText = "Error reaching the backend engine. Check internet connection or backend configuration.";
+                console.error(error);
+            }
+        }
+    </script>
+</body>
+</html>
