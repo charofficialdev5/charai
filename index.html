@@ -5,88 +5,318 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>CharAI Website</title>
     <style>
-        body { font-family: sans-serif; max-width: 600px; margin: 40px auto; padding: 20px; line-height: 1.6; }
-        textarea { width: 100%; padding: 10px; margin-top: 5px; box-sizing: border-box; }
-        select, button { padding: 10px; margin-top: 10px; font-size: 16px; cursor: pointer; }
-        #aiOutput { white-space: pre-wrap; font-weight: bold; background: #f4f4f4; padding: 15px; border-left: 5px solid #007bff; margin-top: 15px; }
-        #usageCounter { color: gray; font-size: 13px; margin-top: 5px; }
+        :root {
+            --bg-main: #131314;
+            --bg-sidebar: #1e1f20;
+            --text-light: #e3e3e3;
+            --accent-blue: #a8c7fa;
+            --chat-user: #2a2b2d;
+            --chat-ai: #1e1f20;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        body { display: flex; height: 100vh; background-color: var(--bg-main); color: var(--text-light); overflow: hidden; }
+        
+        /* Sidebar Layout */
+        .sidebar { width: 260px; background-color: var(--bg-sidebar); display: flex; flex-direction: column; padding: 15px; border-right: 1px solid #333; }
+        .logo { font-size: 22px; font-weight: bold; margin-bottom: 20px; color: var(--accent-blue); display: flex; justify-content: space-between; align-items: center;}
+        .new-chat-btn { background: #333537; border: none; color: white; padding: 12px; border-radius: 20px; cursor: pointer; font-weight: 600; margin-bottom: 20px; transition: 0.2s; }
+        .new-chat-btn:hover { background: #444746; }
+        .chat-list { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; }
+        .chat-item { padding: 10px 15px; background: transparent; border-radius: 8px; cursor: pointer; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; border: 1px solid transparent; }
+        .chat-item:hover, .chat-item.active { background: #2b2c2e; border-color: #444; }
+        .settings-btn { background: transparent; border: 1px solid #444; color: #aaa; padding: 8px; border-radius: 8px; cursor: pointer; margin-top: auto; font-size: 13px; }
+
+        /* Main Workspace Layout */
+        .main-content { flex: 1; display: flex; flex-direction: column; height: 100%; position: relative; }
+        .top-bar { padding: 15px 30px; display: flex; justify-content: flex-end; align-items: center; border-bottom: 1px solid #222; }
+        select { background: #222; color: white; border: 1px solid #444; padding: 8px 12px; border-radius: 8px; outline: none; }
+        
+        .chat-window { flex: 1; overflow-y: auto; padding: 30px 10% 120px 10%; display: flex; flex-direction: column; gap: 20px; }
+        .message { padding: 15px 20px; border-radius: 12px; max-width: 85%; line-height: 1.5; font-size: 15px; white-space: pre-wrap; }
+        .message.user { background-color: var(--chat-user); align-self: flex-end; border-bottom-right-radius: 2px; }
+        .message.ai { background-color: var(--chat-ai); align-self: flex-start; border-bottom-left-radius: 2px; border: 1px solid #2d2f31; }
+        
+        /* Input Area Container */
+        .input-container { position: absolute; bottom: 0; left: 0; right: 0; padding: 20px 10%; background: linear-gradient(transparent, var(--bg-main) 30%); }
+        .input-box-wrapper { display: flex; background: #222327; border: 1px solid #444; border-radius: 24px; padding: 10px 15px; align-items: center; }
+        textarea { flex: 1; background: transparent; border: none; color: white; resize: none; outline: none; height: 24px; font-size: 15px; max-height: 100px; }
+        .send-btn { background: transparent; border: none; color: var(--accent-blue); font-weight: bold; cursor: pointer; padding: 0 10px; font-size: 15px; }
+
+        /* Overlay Setup Screen & Modals */
+        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); justify-content: center; align-items: center; z-index: 100; backdrop-filter: blur(5px); }
+        .modal-content { background: var(--bg-sidebar); padding: 30px; border-radius: 15px; width: 450px; border: 1px solid #444; box-shadow: 0 8px 32px rgba(0,0,0,0.5); }
+        .modal-content h3 { margin-bottom: 10px; font-size: 22px; color: var(--accent-blue); }
+        .modal-content p { font-size: 14px; color: #aaa; margin-bottom: 20px; line-height: 1.4; }
+        .modal-content label { font-size: 13px; color: #ccc; font-weight: 600; display: block; margin-bottom: 5px; }
+        .modal-content input { width: 100%; padding: 12px; margin-bottom: 15px; background: #111; border: 1px solid #444; color: white; border-radius: 8px; outline: none; }
+        .modal-content input:focus { border-color: var(--accent-blue); }
+        .modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 10px; }
+        .modal-actions button, .guide-toggle-btn { padding: 10px 18px; border-radius: 20px; cursor: pointer; border: none; font-weight: 600; font-size: 14px; transition: 0.2s; }
+        .cancel-btn { background: #333; color: #eee; }
+        .cancel-btn:hover { background: #444; }
+        .save-btn { background: var(--accent-blue); color: black; }
+        .save-btn:hover { background: #8ab4f8; }
+        .guide-toggle-btn { background: #2a2b2d; color: var(--accent-blue); border: 1px solid #444; width: 100%; margin-bottom: 15px; }
+        .guide-toggle-btn:hover { background: #333537; }
+
+        /* Embedded Guide Window Panel */
+        .guide-panel { display: none; margin-top: 15px; background: #131314; padding: 15px; border-radius: 8px; border: 1px solid #333; max-height: 200px; overflow-y: auto; text-align: left; font-size: 13px; line-height: 1.5; }
+        .guide-panel h4 { color: #fff; margin: 10px 0 5px 0; }
+        .guide-panel h4:first-child { margin-top: 0; }
+        .guide-panel ol { padding-left: 20px; color: #ccc; }
+        .guide-panel a { color: var(--accent-blue); text-decoration: none; }
+        .guide-panel a:hover { text-decoration: underline; }
     </style>
 </head>
 <body>
 
-    <h2>CharAI</h2>
-    <p>Select a chat model and start chatting.</p>
-    
-    <!-- Model Switcher Dropdown -->
-    <label for="modelSelect">Choose AI Engine:</label>
-    <select id="modelSelect">
-        <option value="gemini">Google Gemini API</option>
-        <option value="groq">Groq API</option>
-    </select>
-    <br><br>
+    <!-- Sidebar Component -->
+    <div class="sidebar">
+        <div class="logo">CharAI</div>
+        <button class="new-chat-btn" onclick="createNewChat()">+ New Chat</button>
+        <div class="chat-list" id="chatList"></div>
+        <button class="settings-btn" onclick="openSettingsModal(false)">⚙️ Modify Keys</button>
+    </div>
 
-    <!-- Prompt Input Box -->
-    <label for="userInput">Enter your question:</label>
-    <textarea id="userInput" placeholder="Type your message here..." rows="5"></textarea>
-    
-    <button onclick="sendToAI()">Send Prompt</button>
+    <!-- Main Section Component -->
+    <div class="main-content">
+        <div class="top-bar">
+            <select id="modelSelect">
+                <option value="gemini">Google Gemini Engine</option>
+                <option value="groq">Groq Engine (Ultra Fast)</option>
+            </select>
+        </div>
 
-    <h3>Answer:</h3>
-    <div id="aiOutput">The AI response will appear here...</div>
-    <div id="usageCounter"></div>
+        <div class="chat-window" id="chatWindow">
+            <div class="message ai">Welcome to your premium intelligence workspace. Ask me anything.</div>
+        </div>
+
+        <div class="input-container">
+            <div class="input-box-wrapper">
+                <textarea id="userInput" placeholder="Ask CharAI a question..." rows="1" oninput="autoResize(this)"></textarea>
+                <button class="send-btn" onclick="sendMessage()">Send</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Configuration Screen Modal Box -->
+    <div class="modal" id="apiModal">
+        <div class="modal-content">
+            <h3 id="modalTitle">Welcome to CharAI</h3>
+            <p id="modalDesc">To experience zero-latency personal execution, please provide your own engine API keys. They are securely saved entirely inside your own private local browser cache.</p>
+            
+            <button class="guide-toggle-btn" onclick="toggleGuide()">💡 View Setup Guide</button>
+            
+            <!-- Embedded Guide Panel -->
+            <div class="guide-panel" id="guidePanel">
+                <h4>🔑 How to get a Google Gemini Key:</h4>
+                <ol>
+                    <li>Go to the <a href="https://ai.google.dev/gemini-api/docs/api-key" target="_blank">Google AI Studio Key Page</a>.</li>
+                    <li>Sign in with any standard Google Account.</li>
+                    <li>Click <strong>"Create API Key"</strong> and copy it.</li>
+                </ol>
+                <h4>⚡ How to get a Groq Key:</h4>
+                <ol>
+                    <li>Go to the <a href="https://console.groq.com/" target="_blank">Groq Console</a>.</li>
+                    <li>Sign up or sign in, then navigate to the <strong>API Keys</strong> tab on the left.</li>
+                    <li>Click <strong>"Create API Key"</strong>, name it, and copy it.</li>
+                </ol>
+            </div>
+
+            <label>Gemini API Key:</label>
+            <input type="password" id="geminiKeyInput" placeholder="AIzaSy...">
+            
+            <label>Groq API Key:</label>
+            <input type="password" id="groqKeyInput" placeholder="gsk_...">
+            
+            <div class="modal-actions">
+                <button class="cancel-btn" id="modalCancelBtn" onclick="closeSettingsModal()">Skip / Cancel</button>
+                <button class="save-btn" onclick="saveKeys()">Save Settings</button>
+            </div>
+        </div>
+    </div>
 
     <script>
-        // STEP 1: Change this placeholder to your actual live Render Web Service URL once deployed!
-        const BACKEND_URL = 'https://charai-k2az.onrender.com'; 
-        let userSessionId = "";
+        // STEP 1: Update this placeholder to your actual live Render Web Service URL!
+        const BACKEND_URL = 'https://your-app-name.onrender.com'; 
+        
+        let conversations = JSON.parse(localStorage.getItem('charai_chats')) || {};
+        let activeChatId = Object.keys(conversations)[0] || null;
 
-        // Instantly generate a temporary session token when they open the website
-        window.onload = async function() {
-            try {
-                const response = await fetch(`${BACKEND_URL}/get-session`);
-                const data = await response.json();
-                userSessionId = data.session_id;
-            } catch (err) {
-                console.error("Failed to connect to backend server. Make sure your Render URL is correct and active.", err);
-                document.getElementById('aiOutput').innerText = "Status: Server sleeping or disconnected. Waiting for spin-up...";
+        window.onload = function() {
+            const savedGemini = localStorage.getItem('user_gemini_key') || '';
+            const savedGroq = localStorage.getItem('user_groq_key') || '';
+            
+            document.getElementById('geminiKeyInput').value = savedGemini;
+            document.getElementById('groqKeyInput').value = savedGroq;
+            
+            // IF no keys exist, force the configuration window immediately upon launch
+            if (!savedGemini && !savedGroq) {
+                openSettingsModal(true); // pass true to indicate it's the mandatory first launch
+            }
+
+            if(!activeChatId) {
+                createNewChat();
+            } else {
+                renderChatList();
+                loadChat(activeChatId);
             }
         };
 
-        async function sendToAI() {
-            const prompt = document.getElementById('userInput').value;
-            const modelChoice = document.getElementById('modelSelect').value;
-            const outputElement = document.getElementById('aiOutput');
-            const counterElement = document.getElementById('usageCounter');
+        function openSettingsModal(isFirstLaunch = false) {
+            const modal = document.getElementById('apiModal');
+            const cancelBtn = document.getElementById('modalCancelBtn');
+            const title = document.getElementById('modalTitle');
+            const desc = document.getElementById('modalDesc');
+
+            if (isFirstLaunch) {
+                title.innerText = "Setup Workspace";
+                desc.innerText = "Please input at least one API key below to launch the communication gateway.";
+                cancelBtn.style.display = "none"; // Hide the exit button so they can't bypass setup empty
+            } else {
+                title.innerText = "Modify Interface Keys";
+                desc.innerText = "Update your stored key credentials. Changes take effect instantly.";
+                cancelBtn.style.display = "block";
+            }
             
-            if (!prompt.trim()) {
-                alert("Please type a question first!");
+            modal.style.display = 'flex';
+        }
+
+        function closeSettingsModal() {
+            document.getElementById('apiModal').style.display = 'none';
+            document.getElementById('guidePanel').style.display = 'none';
+        }
+
+        function toggleGuide() {
+            const panel = document.getElementById('guidePanel');
+            panel.style.display = panel.style.display === 'block' ? 'none' : 'block';
+        }
+
+        function saveKeys() {
+            const geminiVal = document.getElementById('geminiKeyInput').value.trim();
+            const groqVal = document.getElementById('groqKeyInput').value.trim();
+
+            if (!geminiVal && !groqVal) {
+                alert("Please add at least one valid key to initiate the engine workspace.");
                 return;
             }
 
-            outputElement.innerText = "Processing request on Render backend...";
+            localStorage.setItem('user_gemini_key', geminiVal);
+            localStorage.setItem('user_groq_key', groqVal);
+            closeSettingsModal();
+        }
+
+        function createNewChat() {
+            const chatId = 'chat_' + Date.now();
+            conversations[chatId] = {
+                title: "New Chat Session",
+                messages: []
+            };
+            activeChatId = chatId;
+            saveConversations();
+            renderChatList();
+            loadChat(chatId);
+        }
+
+        function saveConversations() {
+            localStorage.setItem('charai_chats', JSON.stringify(conversations));
+        }
+
+        function renderChatList() {
+            const list = document.getElementById('chatList');
+            list.innerHTML = '';
+            Object.keys(conversations).reverse().forEach(id => {
+                const item = document.createElement('div');
+                item.className = `chat-item ${id === activeChatId ? 'active' : ''}`;
+                item.innerText = conversations[id].title;
+                item.onclick = () => loadChat(id);
+                list.appendChild(item);
+            });
+        }
+
+        function loadChat(id) {
+            activeChatId = id;
+            renderChatList();
+            const windowEl = document.getElementById('chatWindow');
+            windowEl.innerHTML = '';
+            
+            if(conversations[id].messages.length === 0) {
+                windowEl.innerHTML = `<div class="message ai">New empty session workspace running custom prompt layers.</div>`;
+                return;
+            }
+            
+            conversations[id].messages.forEach(msg => {
+                const msgEl = document.createElement('div');
+                msgEl.className = `message ${msg.role}`;
+                msgEl.innerText = msg.text;
+                windowEl.appendChild(msgEl);
+            });
+            windowEl.scrollTop = windowEl.scrollHeight;
+        }
+
+        async function sendMessage() {
+            const textEl = document.getElementById('userInput');
+            const prompt = textEl.value.trim();
+            const modelChoice = document.getElementById('modelSelect').value;
+            
+            if (!prompt) return;
+            
+            const geminiKey = localStorage.getItem('user_gemini_key');
+            const groqKey = localStorage.getItem('user_groq_key');
+
+            if ((modelChoice === 'gemini' && !geminiKey) || (modelChoice === 'groq' && !groqKey)) {
+                alert(`You haven't configured a key for the ${modelChoice.toUpperCase()} engine yet.`);
+                openSettingsModal(false);
+                return;
+            }
+
+            textEl.value = '';
+            textEl.style.height = '24px';
+
+            conversations[activeChatId].messages.push({ role: 'user', text: prompt });
+            if (conversations[activeChatId].title === "New Chat Session") {
+                conversations[activeChatId].title = prompt.substring(0, 24) + "...";
+            }
+            saveConversations();
+            loadChat(activeChatId);
+
+            const windowEl = document.getElementById('chatWindow');
+            const thinkingEl = document.createElement('div');
+            thinkingEl.className = 'message ai';
+            thinkingEl.innerText = 'Routing prompt to backend matrix...';
+            windowEl.appendChild(thinkingEl);
+            windowEl.scrollTop = windowEl.scrollHeight;
 
             try {
                 const response = await fetch(`${BACKEND_URL}/chat`, {
                     method: 'POST',
-                    headers: { 
-                        'Content-Type': 'application/json',
-                        'X-Session-Id': userSessionId
-                    },
-                    body: JSON.stringify({ prompt: prompt, model_choice: modelChoice })
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ 
+                        prompt: prompt, 
+                        model_choice: modelChoice,
+                        user_gemini_key: geminiKey,
+                        user_groq_key: groqKey
+                    })
                 });
 
                 const data = await response.json();
-                
+                thinkingEl.remove();
+
                 if (response.ok) {
-                    outputElement.innerText = data.answer;
-                    counterElement.innerText = `Messages left in this session: ${data.remaining}`;
+                    conversations[activeChatId].messages.push({ role: 'ai', text: data.answer });
                 } else {
-                    outputElement.innerText = "Notice: " + data.detail;
+                    conversations[activeChatId].messages.push({ role: 'ai', text: "Engine Error: " + data.detail });
                 }
+                saveConversations();
+                loadChat(activeChatId);
             } catch (error) {
-                outputElement.innerText = "Error reaching the backend engine. Check internet connection or backend configuration.";
-                console.error(error);
+                thinkingEl.innerText = "Fatal connection breakdown targeting Render.";
             }
+        }
+
+        function autoResize(textarea) {
+            textarea.style.height = '24px';
+            textarea.style.height = textarea.scrollHeight - 20 + 'px';
         }
     </script>
 </body>
